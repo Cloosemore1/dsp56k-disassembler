@@ -1,0 +1,5 @@
+# Input binaries
+*.bin
+
+#Program executable
+dsp56k
