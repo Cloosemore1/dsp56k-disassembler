@@ -1,12 +1,7 @@
 #include "dsp56k.h"
+#include "instruction_decode.h"
 
 #define ENTRY_POINT 0x4000
-
-//Instruction decode lookup table
-struct decode_table_row decode_table[2] = {
-    {"JMP xxx", 0xFFF000, 0x0C0000},
-    {"NOP", 0xFFFFFF, 0x000000}
-};
 
 //DSP has 512 word program ram which can be bootstrapped from external ROM on startup
 uint32_t program_ram[512];
@@ -33,15 +28,6 @@ void bootstrap(uint32_t *program_ram, FILE *program_rom) {
     }
 }
 
-char* decode(uint32_t instruction) {
-    for (int i = 0; i < 2; i++) {
-        if ((instruction & decode_table[i].mask) == decode_table[i].constant) {
-            return decode_table[i].mnemonic;
-        }
-    }
-    return "NIL";
-}
-
 int main (int argc, char *argv[]) {
     if (argc < 2) {
         printf("No input file specified\n");
@@ -60,9 +46,18 @@ int main (int argc, char *argv[]) {
     //If successful, bootstrap from binary file
     bootstrap(program_ram, fptr);
 
+    char assembly_instruction[32];
     //print first 32 words of program RAM
-    for (int i = 0; i < 128; i++) {
-        printf("$%04X: %s\n", i, decode(program_ram[i]));
+    while (program_counter >= 0 && program_counter < 0x60) {
+        printf("$%04X: ", program_counter);
+        instruction_decode(
+            program_ram[program_counter], 
+            program_ram[program_counter+1], 
+            &program_counter, 
+            opcode_decode(program_ram[program_counter]),
+            assembly_instruction);
+        
+        printf("%s\n", assembly_instruction);
     }
     return 0;
 }

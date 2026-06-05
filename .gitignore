@@ -1,5 +1,6 @@
 # Input binaries
 *.bin
 
-#Program executable
+#Program executable/object files
 dsp56k
+obj/
