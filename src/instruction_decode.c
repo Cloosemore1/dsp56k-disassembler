@@ -1,7 +1,9 @@
 #include "instruction_decode.h"
 
+#define PARALLEL_MOVE_INSTRUCTION_START 81
+
 //Instruction decode lookup table
-struct decode_table_row decode_table[81] = {
+struct opcode_decode_table_row opcode_decode_table[112] = {
     //Instructions which do not allow parallel moves
     //Mnemonic      Mask      Constant
     {JSCC_XXX,      0xFF0000, 0x0F0000},
@@ -84,19 +86,107 @@ struct decode_table_row decode_table[81] = {
     {SWI,           0xFFFFFF, 0x000006},
     {ILLEGAL,       0xFFFFFF, 0x000005},
     {RTI,           0xFFFFFF, 0x000004},
-    {NOP,           0xFFFFFF, 0x000000}
-    
+    {NOP,           0xFFFFFF, 0x000000},
     //Instructions which allow parallel moves
     //Mnemonic      Mask      Constant
+    {MACR_P,        0x000083, 0x000083},
+    {MAC_P,         0x000083, 0x000082},
+    {MPYR_P,        0x000083, 0x000081},
+    {MPY_P,         0x000083, 0x000080},
+    {CMPM,          0x000087, 0x000007},
+    {AND,           0x0000C7, 0x000046},
+    {CMP,           0x000087, 0x000005},
+    {SUB,           0x000087, 0x000004},
+    {EOR,           0x0000C7, 0x000043},
+    {OR,            0x0000C7, 0x000042},
+    {TFR,           0x000087, 0x000001},
+    {SBC,           0x0000E5, 0x000025},
+    {ADC,           0x0000E5, 0x000021},
+    {ROL,           0x0000F7, 0x000037},
+    {NEG,           0x0000F7, 0x000036},
+    {LSL,           0x0000F7, 0x000033},
+    {ASL,           0x0000F7, 0x000032},
+    {ROR,           0x0000F7, 0x000027},
+    {ABS,           0x0000F7, 0x000026},
+    {LSR,           0x0000F7, 0x000023},
+    {ASR,           0x0000F7, 0x000022},
+    {NOT,           0x0000F7, 0x000017},
+    {SUBL,          0x0000F7, 0x000016},
+    {CLR,           0x0000F7, 0x000013},
+    {ADDL,          0x0000F7, 0x000012},
+    {RND,           0x0000F7, 0x000011},
+    {SUBR,          0x0000F7, 0x000006},
+    {TST,           0x0000F7, 0x000003},
+    {ADDR,          0x0000F7, 0x000002},
+    {MOVE,          0x0000FF, 0x000000},
+    {ADD,           0x000087, 0x000000}
+};
+
+struct parallel_move_decode_table_row parallel_move_decode_table[15] = {
+    //Mnemonic      Mask    Constant
+    {NOP_MOVE,      0xFFFF, 0x2000},
+    {U_MOVE,        0xFFE0, 0x2040},
+    {RY_2_MOVE,     0xFEC0, 0x0880},
+    {XR_2_MOVE,     0xFEC0, 0x0800},
+    {R_MOVE,        0xFC00, 0x2000},
+    {L_EA_MOVE,     0xF440, 0x4040},
+    {L_AA_MOVE,     0xF440, 0x4000},
+    {RY_1_MOVE,     0xF040, 0x1040},
+    {XR_1_MOVE,     0xF040, 0x1000},
+    {X_EA_MOVE,     0xC840, 0x4040},
+    {X_AA_MOVE,     0xC840, 0x4000},
+    {Y_EA_MOVE,     0xC840, 0x4840},
+    {Y_AA_MOVE,     0xC840, 0x4800},
+    {I_MOVE,        0xE000, 0x2000},
+    {XY_MOVE,       0x8000, 0x8000}
 };
 
 int opcode_decode(uint32_t instruction) {
-    for (int i = 0; i < 81; i++) {
-        if ((instruction & decode_table[i].mask) == decode_table[i].constant) {
-            return decode_table[i].mnemonic;
+    for (int i = 0; i < 112; i++) {
+        if ((instruction & opcode_decode_table[i].mask) == opcode_decode_table[i].constant) {
+            return opcode_decode_table[i].mnemonic;
         }
     }
     return -1;
+}
+
+int parallel_move_opcode_decode(unsigned short parallel_move_instruction) {
+    for (int i = 0; i < 15; i++) {
+        if ((parallel_move_instruction & parallel_move_decode_table[i].mask) == parallel_move_decode_table[i].constant) {
+            return parallel_move_decode_table[i].parallel_move_mnemonic;
+        }
+    }
+    return -1;
+}
+
+void parallel_move_decode(unsigned short parallel_move_instruction, uint32_t extension_word, uint32_t *program_counter, int parallel_move_mnemonic, char *parallel_move) {
+    unsigned char register_code;
+    char target_register[4];
+
+    unsigned char short_address;
+
+    switch (parallel_move_mnemonic) {
+        case I_MOVE:
+            unsigned char immediate_data = parallel_move_instruction & 0x00FF;
+            //Get target register
+            register_code = (parallel_move_instruction & 0x1F00) >> 8;
+            register_decode(register_code, target_register);
+            //Format string
+            snprintf(parallel_move, 32, "#%02X,%s", immediate_data, target_register);
+            break;
+        case X_AA_MOVE:
+            short_address = parallel_move_instruction & 0x003F;
+            register_code = (parallel_move_instruction & 0x3000) >> 9;
+            register_code += (parallel_move_instruction & 0x0700) >> 8;
+            register_decode(register_code, target_register);
+            //Determine read/write
+            if (parallel_move_instruction & 0x0080) {
+                snprintf(parallel_move, 32, "X:$%02X,%s", short_address, target_register);
+            } else {
+                snprintf(parallel_move, 32, "%s,X:$%02X", target_register, short_address);
+            }
+
+    }
 }
 
 void effective_address_decode(uint32_t extension_word, uint32_t *program_counter, char memory_space, unsigned char effective_address_mode, char *effective_address) {
@@ -135,26 +225,199 @@ void effective_address_decode(uint32_t extension_word, uint32_t *program_counter
     }
 }
 
+void condition_decode(unsigned char condition_code, char *condition_mnemonic) {
+    switch (condition_code) {
+        case 0:
+            snprintf(condition_mnemonic, 3, "CC");
+            break;
+        case 1:
+            snprintf(condition_mnemonic, 3, "GE");
+            break;
+        case 2:
+            snprintf(condition_mnemonic, 3, "NE");
+            break;
+        case 3:
+            snprintf(condition_mnemonic, 3, "PL");
+            break;
+        case 4:
+            snprintf(condition_mnemonic, 3, "NN");
+            break;
+        case 5:
+            snprintf(condition_mnemonic, 3, "EC");
+            break;
+        case 6:
+            snprintf(condition_mnemonic, 3, "LC");
+            break;
+        case 7:
+            snprintf(condition_mnemonic, 3, "GT");
+            break;
+        case 8:
+            snprintf(condition_mnemonic, 3, "CS");
+            break;
+        case 9:
+            snprintf(condition_mnemonic, 3, "LT");
+            break;
+        case 10:
+            snprintf(condition_mnemonic, 3, "EQ");
+            break;
+        case 11:
+            snprintf(condition_mnemonic, 3, "MI");
+            break;
+        case 12:
+            snprintf(condition_mnemonic, 3, "NR");
+            break;
+        case 13:
+            snprintf(condition_mnemonic, 3, "ES");
+            break;
+        case 14:
+            snprintf(condition_mnemonic, 3, "LS");
+            break;
+        case 15:
+            snprintf(condition_mnemonic, 3, "LE");
+            break;
+    }
+    return;
+}
+
+void register_decode(unsigned char register_code, char *target_register) {
+    unsigned char register_number = register_code & 0x07;
+    unsigned char register_code_high = (register_code & 0x38) >> 3;
+    if (register_code_high == 0x02) {
+        snprintf(target_register, 4, "R%d", register_number);
+    } else if (register_code_high == 0x03) {
+        snprintf(target_register, 4, "N%d", register_number);
+    } else if (register_code_high == 0x04) {
+        snprintf(target_register, 4, "M%d", register_number);
+    } else {
+        switch (register_code) {
+        case 0x04:
+            snprintf(target_register, 4, "X0");
+            break;
+        case 0x05:
+            snprintf(target_register, 4, "X1");
+            break;
+        case 0x06:
+            snprintf(target_register, 4, "Y0");
+            break;
+        case 0x07:
+            snprintf(target_register, 4, "Y1");
+            break;
+        case 0x08:
+            snprintf(target_register, 4, "A0");
+            break;
+        case 0x09:
+            snprintf(target_register, 4, "B0");
+            break;
+        case 0x0A:
+            snprintf(target_register, 4, "A2");
+            break;
+        case 0x0B:
+            snprintf(target_register, 4, "B2");
+            break;
+        case 0x0C:
+            snprintf(target_register, 4, "A1");
+            break;
+        case 0x0D:
+            snprintf(target_register, 4, "B1");
+            break;
+        case 0x0E:
+            snprintf(target_register, 4, "A");
+            break;
+        case 0x0F:
+            snprintf(target_register, 4, "B");
+            break;
+        case 0x39:
+            snprintf(target_register, 4, "SR");
+            break;
+        case 0x3A:
+            snprintf(target_register, 4, "OMR");
+            break;
+        case 0x3B:
+            snprintf(target_register, 4, "SP");
+            break;
+        case 0x3C:
+            snprintf(target_register, 4, "SSH");
+            break;
+        case 0x3D:
+            snprintf(target_register, 4, "SSL");
+            break;
+        case 0x3E:
+            snprintf(target_register, 4, "LA");
+            break;
+        case 0x3F:
+            snprintf(target_register, 4, "LC");
+            break;
+        }
+    }
+}
+
 void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t *program_counter, int mnemonic, char *assembly_instruction) {
-    
+    //Local decoding variables, may not be used by all instructions, but are common to many
+    unsigned char condition_code;
+    char condition_mnemonic[3];
+    unsigned char effective_address_mode;
+    char effective_address[32];
+    unsigned char register_code;
+    char target_register[4];
+
+    char memory_space;
+    short jmp_address;
+
+    unsigned short parallel_move_code;
+    int parallel_move_mnemonic;
+    char parallel_move[32];
+
+    if (mnemonic >= PARALLEL_MOVE_INSTRUCTION_START) { //If the opcode corresponds to a parallel move instruction, validate the move opcode
+        parallel_move_code = (instruction & 0xFFFF00) >> 8;
+        parallel_move_mnemonic = parallel_move_opcode_decode(parallel_move_code);
+        if (parallel_move_mnemonic == -1) {
+            (*program_counter)++;
+            snprintf(assembly_instruction, 32, "data %06X", instruction);
+            return;
+        }
+        parallel_move_decode(parallel_move_code, extension_word, program_counter, parallel_move_mnemonic, parallel_move);
+    }
+
     switch (mnemonic) {
-        case -1:
+        case -1: //Not a recognized instruction, categorize as data
             snprintf(assembly_instruction, 32, "data %06X", instruction);
             break;
         case NOP:
             snprintf(assembly_instruction, 32, "NOP");
             break;
+        case JSCC_XXX:
+            condition_code = (instruction & 0x00F000) >> 12;
+            jmp_address = instruction & 0x000FFF;
+            condition_decode(condition_code, condition_mnemonic);
+            snprintf(assembly_instruction, 32, "JS%s $%03X", condition_mnemonic, jmp_address);
+            break;
+        case JCC_XXX:
+            condition_code = (instruction & 0x00F000) >> 12;
+            jmp_address = instruction & 0x000FFF;
+            condition_decode(condition_code, condition_mnemonic);
+            snprintf(assembly_instruction, 32, "J%s $%03X", condition_mnemonic, jmp_address);
+            break;
+        case JSR_XXX:
+            jmp_address = instruction & 0x000FFF;
+            snprintf(assembly_instruction, 32, "JSR $%03X", jmp_address);
+            break;
         case JMP_XXX:
-            short jmp_address = instruction & 0x000FFF;
+            jmp_address = instruction & 0x000FFF;
             snprintf(assembly_instruction, 32, "JMP $%03X", jmp_address);
-            *program_counter = jmp_address - 1;
+            //*program_counter = jmp_address - 1;
+            break;
+        case JMP_EA:
+            memory_space = 'P';
+            effective_address_mode = ((instruction & 0x003F00) >> 8);
+            effective_address_decode(extension_word, program_counter, memory_space, effective_address_mode, effective_address);
+            snprintf(assembly_instruction, 32, "JMP %s", effective_address);
             break;
         case MOVEP_XY:
             //Get I/O short address and 1 extend
             unsigned short io_short_address = (instruction & 0x00003F) + 0xFFC0;
 
             //Get memory spaces
-            char memory_space = 'X';
+            memory_space = 'X';
             char peripheral_space = 'X';
             if (instruction & 0x000040) {
                 memory_space = 'Y';
@@ -164,8 +427,7 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             }
 
             //Get effective address
-            unsigned char effective_address_mode = ((instruction & 0x003F00) >> 8);
-            unsigned char effective_address[32];
+            effective_address_mode = ((instruction & 0x003F00) >> 8);
             effective_address_decode(extension_word, program_counter, memory_space, effective_address_mode, effective_address);
         
             //Determine read/write
@@ -176,13 +438,39 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             }
             break;
         case MOVEP_P:
+            snprintf(assembly_instruction, 32, "MOVEP_P");
             break;
         case MOVEP_R:
+            snprintf(assembly_instruction, 32, "MOVEP_R");
+            break;
+        case MOVEM_EA:
+            memory_space = 'P';
+            //Get effective address
+            effective_address_mode = ((instruction & 0x003F00) >> 8);
+            effective_address_decode(extension_word, program_counter, memory_space, effective_address_mode, effective_address);
+            
+            //Get the source/destination target register
+            register_code = instruction & 0x00003F;
+            register_decode(register_code, target_register);
+
+            //Determine read/write
+            if (instruction & 0x008000) {
+                snprintf(assembly_instruction, 32, "MOVEM %s,%s", effective_address, target_register);
+            } else {
+                snprintf(assembly_instruction, 32, "MOVEM %s,%s", target_register, effective_address);
+            }
+            break;
+        case RTS:
+            snprintf(assembly_instruction, 32, "RTS");
+            break;
+        case MOVE:
+            snprintf(assembly_instruction, 32, "MOVE %s", parallel_move);
             break;
         default:
-            snprintf(assembly_instruction, 20, "");
+            snprintf(assembly_instruction, 32, "%d", mnemonic);
             break;
     }
+
     (*program_counter)++;
     return;
 }

@@ -48,7 +48,7 @@ int main (int argc, char *argv[]) {
 
     char assembly_instruction[32];
     //print first 32 words of program RAM
-    while (program_counter >= 0 && program_counter < 0x60) {
+    while (program_counter >= 0 && program_counter < 511) {
         printf("$%04X: ", program_counter);
         instruction_decode(
             program_ram[program_counter], 
