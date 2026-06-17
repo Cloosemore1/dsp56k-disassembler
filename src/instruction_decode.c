@@ -163,16 +163,29 @@ void parallel_move_decode(unsigned short parallel_move_instruction, uint32_t ext
     unsigned char register_code;
     char target_register[4];
 
+    unsigned char effective_address_mode;
+    char effective_address[32];
+
     unsigned char short_address;
 
     switch (parallel_move_mnemonic) {
-        case I_MOVE:
-            unsigned char immediate_data = parallel_move_instruction & 0x00FF;
+        case XY_MOVE:
+            snprintf(parallel_move, 32, "XY_MOVE");
+            break;
+        case X_EA_MOVE:
+            //Get effective address
+            effective_address_mode = parallel_move_instruction & 0x003F;
+            effective_address_decode(extension_word, program_counter, 'X', effective_address_mode, effective_address);
             //Get target register
-            register_code = (parallel_move_instruction & 0x1F00) >> 8;
+            register_code = (parallel_move_instruction & 0x3000) >> 9;
+            register_code += (parallel_move_instruction & 0x0700) >> 8;
             register_decode(register_code, target_register);
-            //Format string
-            snprintf(parallel_move, 32, "#%02X,%s", immediate_data, target_register);
+            //Determine read/write
+            if (parallel_move_instruction & 0x0080) {
+                snprintf(parallel_move, 32, "%s,%s", effective_address, target_register);
+            } else {
+                snprintf(parallel_move, 32, "%s,%s", target_register, effective_address);
+            }
             break;
         case X_AA_MOVE:
             short_address = parallel_move_instruction & 0x003F;
@@ -185,7 +198,57 @@ void parallel_move_decode(unsigned short parallel_move_instruction, uint32_t ext
             } else {
                 snprintf(parallel_move, 32, "%s,X:$%02X", target_register, short_address);
             }
-
+            break;
+        case Y_EA_MOVE:
+            snprintf(parallel_move, 32, "Y_EA_MOVE");
+            break;
+        case Y_AA_MOVE:
+            short_address = parallel_move_instruction & 0x003F;
+            register_code = (parallel_move_instruction & 0x3000) >> 9;
+            register_code += (parallel_move_instruction & 0x0700) >> 8;
+            register_decode(register_code, target_register);
+            //Determine read/write
+            if (parallel_move_instruction & 0x0080) {
+                snprintf(parallel_move, 32, "Y:$%02X,%s", short_address, target_register);
+            } else {
+                snprintf(parallel_move, 32, "%s,Y:$%02X", target_register, short_address);
+            }
+            break;
+        case L_EA_MOVE:
+            snprintf(parallel_move, 32, "L_EA_MOVE");
+            break;
+        case L_AA_MOVE:
+            snprintf(parallel_move, 32, "L_AA_MOVE");
+            break;
+        case I_MOVE:
+            unsigned char immediate_data = parallel_move_instruction & 0x00FF;
+            //Get target register
+            register_code = (parallel_move_instruction & 0x1F00) >> 8;
+            register_decode(register_code, target_register);
+            //Format string
+            snprintf(parallel_move, 32, "#%02X,%s", immediate_data, target_register);
+            break;
+        case R_MOVE:
+            snprintf(parallel_move, 32, "R_MOVE");
+            break;
+        case U_MOVE:
+            snprintf(parallel_move, 32, "U_MOVE");
+            break;
+        case RY_1_MOVE:
+            snprintf(parallel_move, 32, "RY_1_MOVE");
+            break;
+        case RY_2_MOVE:
+            snprintf(parallel_move, 32, "RY_2_MOVE");
+            break;
+        case XR_1_MOVE:
+            snprintf(parallel_move, 32, "XR_1_MOVE");
+            break;
+        case XR_2_MOVE:
+            snprintf(parallel_move, 32, "XR_2_MOVE");
+            break;
+        case NOP_MOVE:
+            snprintf(parallel_move, 32, "NOP_MOVE");
+            break;
     }
 }
 
@@ -367,6 +430,9 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
     int parallel_move_mnemonic;
     char parallel_move[32];
 
+    unsigned short io_short_address;
+    char peripheral_space;
+
     if (mnemonic >= PARALLEL_MOVE_INSTRUCTION_START) { //If the opcode corresponds to a parallel move instruction, validate the move opcode
         parallel_move_code = (instruction & 0xFFFF00) >> 8;
         parallel_move_mnemonic = parallel_move_opcode_decode(parallel_move_code);
@@ -389,36 +455,47 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             condition_code = (instruction & 0x00F000) >> 12;
             jmp_address = instruction & 0x000FFF;
             condition_decode(condition_code, condition_mnemonic);
-            snprintf(assembly_instruction, 32, "JS%s $%03X", condition_mnemonic, jmp_address);
+            snprintf(assembly_instruction, 32, "JS%s \t$%03X", condition_mnemonic, jmp_address);
             break;
         case JCC_XXX:
             condition_code = (instruction & 0x00F000) >> 12;
             jmp_address = instruction & 0x000FFF;
             condition_decode(condition_code, condition_mnemonic);
-            snprintf(assembly_instruction, 32, "J%s $%03X", condition_mnemonic, jmp_address);
+            snprintf(assembly_instruction, 32, "J%s \t$%03X", condition_mnemonic, jmp_address);
             break;
         case JSR_XXX:
             jmp_address = instruction & 0x000FFF;
-            snprintf(assembly_instruction, 32, "JSR $%03X", jmp_address);
+            snprintf(assembly_instruction, 32, "JSR \t$%03X", jmp_address);
             break;
         case JMP_XXX:
             jmp_address = instruction & 0x000FFF;
-            snprintf(assembly_instruction, 32, "JMP $%03X", jmp_address);
+            snprintf(assembly_instruction, 32, "JMP \t$%03X", jmp_address);
             //*program_counter = jmp_address - 1;
             break;
         case JMP_EA:
             memory_space = 'P';
             effective_address_mode = ((instruction & 0x003F00) >> 8);
             effective_address_decode(extension_word, program_counter, memory_space, effective_address_mode, effective_address);
-            snprintf(assembly_instruction, 32, "JMP %s", effective_address);
+            snprintf(assembly_instruction, 32, "JMP \t%s", effective_address);
+            break;
+        case BCHG_PP:
+            //Get memory space
+            memory_space = 'X';
+            if (instruction & 0x000040) {
+                memory_space = 'Y';
+            }
+            //Get I/O short address and 1 extend
+            io_short_address = ((instruction & 0x003F00) >> 8) + 0xFFC0;
+            unsigned char bit_number = instruction & 0x00001F;
+            snprintf(assembly_instruction, 32, "BCHG \t#%d,%c:<<$%04X", bit_number, memory_space, io_short_address);
             break;
         case MOVEP_XY:
             //Get I/O short address and 1 extend
-            unsigned short io_short_address = (instruction & 0x00003F) + 0xFFC0;
+            io_short_address = (instruction & 0x00003F) + 0xFFC0;
 
             //Get memory spaces
             memory_space = 'X';
-            char peripheral_space = 'X';
+            peripheral_space = 'X';
             if (instruction & 0x000040) {
                 memory_space = 'Y';
             }
@@ -432,16 +509,32 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
         
             //Determine read/write
             if (instruction & 0x008000) {
-                snprintf(assembly_instruction, 32, "MOVEP %s,%c:<<$%04X", effective_address, peripheral_space, io_short_address);
+                snprintf(assembly_instruction, 32, "MOVEP \t%s,%c:<<$%04X", effective_address, peripheral_space, io_short_address);
             } else {
-                snprintf(assembly_instruction, 32, "MOVEP %c:<<$%04X,%s", peripheral_space, io_short_address, effective_address);
+                snprintf(assembly_instruction, 32, "MOVEP \t%c:<<$%04X,%s", peripheral_space, io_short_address, effective_address);
             }
             break;
         case MOVEP_P:
             snprintf(assembly_instruction, 32, "MOVEP_P");
             break;
         case MOVEP_R:
-            snprintf(assembly_instruction, 32, "MOVEP_R");
+            //Get I/O short address and 1 extend
+            io_short_address = (instruction & 0x00003F) + 0xFFC0;
+            //Get peripheral memory space
+            peripheral_space = 'X';
+            if (instruction & 0x010000) {
+                peripheral_space = 'Y';
+            }
+            //Get target register
+            //Get the source/destination target register
+            register_code = (instruction & 0x003F00) >> 8;
+            register_decode(register_code, target_register);
+            //Determine read/write
+            if (instruction & 0x008000) {
+                snprintf(assembly_instruction, 32, "MOVEP \t%s,%c:<<$%04X", target_register, peripheral_space, io_short_address);
+            } else {
+                snprintf(assembly_instruction, 32, "MOVEP \t%c:<<$%04X,%s", peripheral_space, io_short_address, target_register);
+            }
             break;
         case MOVEM_EA:
             memory_space = 'P';
@@ -455,19 +548,95 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
 
             //Determine read/write
             if (instruction & 0x008000) {
-                snprintf(assembly_instruction, 32, "MOVEM %s,%s", effective_address, target_register);
+                snprintf(assembly_instruction, 32, "MOVEM \t%s,%s", effective_address, target_register);
             } else {
-                snprintf(assembly_instruction, 32, "MOVEM %s,%s", target_register, effective_address);
+                snprintf(assembly_instruction, 32, "MOVEM \t%s,%s", target_register, effective_address);
             }
+            break;
+        case DO_XXX:
+            unsigned short loop_cnt = (instruction & 0x00000F) << 8;
+            loop_cnt += (instruction & 0x00FF00) >> 8;
+            snprintf(assembly_instruction, 32, "DO \t#%d,$%04X", loop_cnt, extension_word);
+            (*program_counter)++;
             break;
         case RTS:
             snprintf(assembly_instruction, 32, "RTS");
             break;
+        case AND:
+            char logical_source_register[3];
+            char logical_destination_register = 'A';
+            
+            //Determine destination register
+            if (instruction & 0x000008) {
+                logical_destination_register = 'B';
+            }
+            //Determine source register
+            unsigned char logical_source_register_code = (instruction & 0x000030) >> 4;
+            switch (logical_source_register_code) {
+                case 0x00:
+                    snprintf(logical_source_register, 3, "X0");
+                    break;
+                case 0x01:
+                    snprintf(logical_source_register, 3, "Y0");
+                    break;
+                case 0x02:
+                    snprintf(logical_source_register, 3, "X1");
+                    break;
+                case 0x03:
+                    snprintf(logical_source_register, 3, "Y1");
+                    break;
+            }
+            snprintf(assembly_instruction, 32, "AND \t%s,%c \t%s", logical_source_register, logical_destination_register, parallel_move);
+            break;
+        case CMP:
+            char cmp_registers[5];
+            unsigned char cmp_register_code = (instruction & 0x000078) >> 3;
+            switch (cmp_register_code) {
+                case 0x00:
+                    snprintf(cmp_registers, 5, "B,A");
+                    break;
+                case 0x01:
+                    snprintf(cmp_registers, 5, "A,B");
+                    break;  
+                case 0x08:
+                    snprintf(cmp_registers, 5, "X0,A");
+                    break;
+                case 0x09:
+                    snprintf(cmp_registers, 5, "X0,B");
+                    break;
+                case 0x0A:
+                    snprintf(cmp_registers, 5, "Y0,A");
+                    break;
+                case 0x0B:
+                    snprintf(cmp_registers, 5, "Y0,B");
+                    break;
+                case 0x0C:
+                    snprintf(cmp_registers, 5, "X1,A");
+                    break;
+                case 0x0D:
+                    snprintf(cmp_registers, 5, "X1,B");
+                    break;
+                case 0x0E:
+                    snprintf(cmp_registers, 5, "Y1,A");
+                    break;
+                case 0x0F:
+                    snprintf(cmp_registers, 5, "Y1,B");
+                    break;
+            }
+            snprintf(assembly_instruction, 32, "CMP \t%s \t%s", cmp_registers, parallel_move);
+            break;
+        case CLR:
+            if (instruction & 0x000008) {
+                snprintf(assembly_instruction, 32, "CLR \tB \t%s", parallel_move);
+            } else {
+                snprintf(assembly_instruction, 32, "CLR \tA \t%s", parallel_move);
+            }
+            break;
         case MOVE:
-            snprintf(assembly_instruction, 32, "MOVE %s", parallel_move);
+            snprintf(assembly_instruction, 32, "MOVE \t%s", parallel_move);
             break;
         default:
-            snprintf(assembly_instruction, 32, "%d", mnemonic);
+            snprintf(assembly_instruction, 32, "%d \t%s", mnemonic, parallel_move);
             break;
     }
 

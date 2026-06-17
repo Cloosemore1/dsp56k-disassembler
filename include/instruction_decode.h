@@ -157,3 +157,5 @@ int opcode_decode(uint32_t instruction);
 void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t *program_counter, int mnemonic, char *assembly_instruction);
 
 void register_decode(unsigned char register_code, char *target_register);
+
+void effective_address_decode(uint32_t extension_word, uint32_t *program_counter, char memory_space, unsigned char effective_address_mode, char *effective_address);
