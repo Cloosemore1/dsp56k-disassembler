@@ -200,7 +200,20 @@ void parallel_move_decode(unsigned short parallel_move_instruction, uint32_t ext
             }
             break;
         case Y_EA_MOVE:
-            snprintf(parallel_move, 32, "Y_EA_MOVE");
+            //Get effective address
+            effective_address_mode = parallel_move_instruction & 0x003F;
+            effective_address_decode(extension_word, program_counter, 'Y', effective_address_mode, effective_address);
+            //Get target register
+            register_code = (parallel_move_instruction & 0x3000) >> 9;
+            register_code += (parallel_move_instruction & 0x0700) >> 8;
+            register_decode(register_code, target_register);
+            //Determine read/write
+            if (parallel_move_instruction & 0x0080) {
+                snprintf(parallel_move, 32, "%s,%s", effective_address, target_register);
+            } else {
+                snprintf(parallel_move, 32, "%s,%s", target_register, effective_address);
+            }
+            break;
             break;
         case Y_AA_MOVE:
             short_address = parallel_move_instruction & 0x003F;
@@ -553,10 +566,15 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
                 snprintf(assembly_instruction, 32, "MOVEM \t%s,%s", target_register, effective_address);
             }
             break;
+        case REP_S:
+            register_code = (instruction & 0x003F00) >> 8;
+            register_decode(register_code, target_register);
+            snprintf(assembly_instruction, 32, "REP \t%s", target_register);
+            break;
         case DO_XXX:
             unsigned short loop_cnt = (instruction & 0x00000F) << 8;
             loop_cnt += (instruction & 0x00FF00) >> 8;
-            snprintf(assembly_instruction, 32, "DO \t#%d,$%04X", loop_cnt, extension_word);
+            snprintf(assembly_instruction, 32, "DO \t#%03X,$%04X", loop_cnt, extension_word);
             (*program_counter)++;
             break;
         case RTS:
