@@ -620,6 +620,12 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             snprintf(assembly_instruction, 32, "JMP \t$%03X", jmp_address);
             //*program_counter = jmp_address - 1;
             break;
+        case JSR_EA:
+            memory_space = 'P';
+            effective_address_mode = ((instruction & 0x003F00) >> 8);
+            effective_address_decode(extension_word, program_counter, memory_space, effective_address_mode, effective_address);
+            snprintf(assembly_instruction, 32, "JSR \t%s", effective_address);
+            break;
         case JMP_EA:
             memory_space = 'P';
             effective_address_mode = ((instruction & 0x003F00) >> 8);
