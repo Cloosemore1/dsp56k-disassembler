@@ -626,6 +626,14 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             effective_address_decode(extension_word, program_counter, memory_space, effective_address_mode, effective_address);
             snprintf(assembly_instruction, 32, "JSR \t%s", effective_address);
             break;
+        case JCC_EA:
+            condition_code = instruction & 0x00000F;
+            condition_decode(condition_code, condition_mnemonic);
+            memory_space = 'P';
+            effective_address_mode = ((instruction & 0x003F00) >> 8);
+            effective_address_decode(extension_word, program_counter, memory_space, effective_address_mode, effective_address);
+            snprintf(assembly_instruction, 32, "J%s \t%s", condition_mnemonic, effective_address);
+            break;
         case JMP_EA:
             memory_space = 'P';
             effective_address_mode = ((instruction & 0x003F00) >> 8);
@@ -901,6 +909,21 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
                 snprintf(assembly_instruction, 32, "MAC \t%c%s,B \t%s", alu_sign, alu_product_registers, parallel_move);
             } else {
                 snprintf(assembly_instruction, 32, "MAC \t%c%s,A \t%s", alu_sign, alu_product_registers, parallel_move);
+            }
+            break;
+        case MPYR_P:
+            //Determine sign
+            if (instruction & 0x000004) {
+                alu_sign = '-';
+            }
+            //Get product registers
+            alu_product_register_codes = (instruction & 0x000070) >> 4;
+            alu_product_register_decode(alu_product_register_codes, alu_product_registers);
+            //Get destination register
+            if (instruction & 0x000008) {
+                snprintf(assembly_instruction, 32, "MPYR \t%c%s,B \t%s", alu_sign, alu_product_registers, parallel_move);
+            } else {
+                snprintf(assembly_instruction, 32, "MPYR \t%c%s,A \t%s", alu_sign, alu_product_registers, parallel_move);
             }
             break;
         case MPY_P:
