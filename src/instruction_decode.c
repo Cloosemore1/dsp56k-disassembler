@@ -556,6 +556,8 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
     char condition_mnemonic[3];
     unsigned char effective_address_mode;
     char effective_address[32];
+    unsigned char source_register_code;
+    char source_register[4];
     unsigned char register_code;
     char target_register[4];
 
@@ -880,6 +882,17 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             absolute_short_address = (instruction & 0x003F00) >> 8;
             snprintf(assembly_instruction, 32, "DO \t%c:$%02X,$%04X", memory_space, absolute_short_address, extension_word);
             (*program_counter)++;
+            break;
+        case MOVEC_S:
+            source_register_code = instruction & 0x00003F;
+            register_decode(source_register_code, source_register);
+            register_code = (instruction & 0x0033F00) >> 8;
+            register_decode(register_code, target_register);
+            if (instruction & 0x008000) {
+                snprintf(assembly_instruction, 32, "MOVEC \t%s,%s", target_register, source_register);
+            } else {
+                snprintf(assembly_instruction, 32, "MOVEC \t%s,%s", source_register, target_register);
+            }
             break;
         case LUA:
             //Get effective address
