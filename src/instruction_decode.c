@@ -169,9 +169,93 @@ void parallel_move_decode(unsigned short parallel_move_instruction, uint32_t ext
 
     unsigned char short_address;
 
+    char register_1[4];
+    char register_2[4];
+
     switch (parallel_move_mnemonic) {
         case XY_MOVE:
-            snprintf(parallel_move, 32, "XY_MOVE");
+            char move_x[16];
+            char move_y[16];
+            effective_address_mode = (parallel_move_instruction & 0x0018) >> 3;
+            unsigned char effective_address_mode_2 = (parallel_move_instruction & 0x3000) >> 12;
+            char effective_address_2[32];
+            unsigned char register_num_1 = parallel_move_instruction & 0x0007;
+            switch (effective_address_mode) {
+                case 0x00:
+                    snprintf(effective_address, 32, "(R%d)", register_num_1);
+                    break;
+                case 0x01:
+                    snprintf(effective_address, 32, "(R%d)+N%d", register_num_1, register_num_1);
+                    break;
+                case 0x02:
+                    snprintf(effective_address, 32, "(R%d)-", register_num_1);
+                    break;
+                case 0x03:
+                    snprintf(effective_address, 32, "(R%d)+", register_num_1);
+                    break;
+            }
+            register_code = (parallel_move_instruction & 0x0C00) >> 10;
+            switch (register_code) {
+                case 0x00:
+                    snprintf(register_1, 4, "X0");
+                    break;
+                case 0x01:
+                    snprintf(register_1, 4, "X1");
+                    break;
+                case 0x02:
+                    snprintf(register_1, 4, "A");
+                    break;
+                case 0x03:
+                    snprintf(register_1, 4, "B");
+                    break;
+            }
+            //Determine read or write for X move
+            if (parallel_move_instruction & 0x4000) { //write
+                snprintf(move_x, 16, "X:%s,%s", effective_address, register_1);
+            } else { //read
+                snprintf(move_x, 16, "%s,X:%s", register_1, effective_address);
+            }
+            unsigned char register_num_2 = 0x00;
+            if (register_num_1 < 4) {
+                register_num_2 = 0x04;
+            }
+            register_num_2 += (parallel_move_instruction & 0x0060) >> 5;
+            switch (effective_address_mode_2) {
+                case 0x00:
+                    snprintf(effective_address_2, 32, "(R%d)", register_num_2);
+                    break;
+                case 0x01:
+                    snprintf(effective_address_2, 32, "(R%d)+N%d", register_num_2, register_num_2);
+                    break;
+                case 0x02:
+                    snprintf(effective_address_2, 32, "(R%d)-", register_num_2);
+                    break;
+                case 0x03:
+                    snprintf(effective_address_2, 32, "(R%d)+", register_num_2);
+                    break;
+            }
+            register_code = (parallel_move_instruction & 0x0300) >> 8;
+            switch (register_code) {
+                case 0x00:
+                    snprintf(register_2, 4, "Y0");
+                    break;
+                case 0x01:
+                    snprintf(register_2, 4, "Y1");
+                    break;
+                case 0x02:
+                    snprintf(register_2, 4, "A");
+                    break;
+                case 0x03:
+                    snprintf(register_2, 4, "B");
+                    break;
+            }
+            //Determine read or write for X move
+            if (parallel_move_instruction & 0x0080) { //write
+                snprintf(move_y, 16, "Y:%s,%s", effective_address_2, register_2);
+            } else { //read
+                snprintf(move_y, 16, "%s,Y:%s", register_2, effective_address_2);
+            }
+            snprintf(parallel_move, 32, "%s \t%s", move_x, move_y);
             break;
         case X_EA_MOVE:
             //Get effective address
@@ -260,7 +344,6 @@ void parallel_move_decode(unsigned short parallel_move_instruction, uint32_t ext
         case RY_1_MOVE:
             char s1_register = 'A';
             char *d1_register = "X0";
-            char register_2[3];
             if (parallel_move_instruction & 0x0800) {
                 s1_register = 'B';
             }
@@ -297,7 +380,6 @@ void parallel_move_decode(unsigned short parallel_move_instruction, uint32_t ext
         case XR_1_MOVE:
             char s2_register = 'A';
             char *d2_register = "Y0";
-            char register_1[3];
             if (parallel_move_instruction & 0x0200) {
                 s2_register = 'B';
             }
@@ -717,6 +799,19 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             jmp_address = extension_word & 0x00FFFF;
             (*program_counter)++;
             snprintf(assembly_instruction, 32, "JSET \t#%d,%s,$%04X", bit_number, effective_address, jmp_address);
+            break;
+        case JCLR_EA:
+            bit_number = instruction & 0x00001F;
+            //Get memory space
+            memory_space = 'X';
+            if (instruction & 0x000040) {
+                memory_space = 'Y';
+            }
+            effective_address_mode = ((instruction & 0x003F00) >> 8);
+            effective_address_decode(extension_word, program_counter, memory_space, effective_address_mode, effective_address);
+            jmp_address = extension_word & 0x00FFFF;
+            (*program_counter)++;
+            snprintf(assembly_instruction, 32, "JCLR \t#%d,%s,$%04X", bit_number, effective_address, jmp_address);
             break;
         case JSET_AA:
             bit_number = instruction & 0x00001F;
@@ -1164,6 +1259,11 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             alu_register_codes = (instruction & 0x000078) >> 3;
             alu_register_decode(alu_register_codes, alu_registers);
             snprintf(assembly_instruction, 32, "ADD \t%s \t%s", alu_registers, parallel_move);
+            break;
+        case ADC:
+            alu_register_codes = (instruction & 0x000038) >> 3;
+            alu_register_decode(alu_register_codes, alu_registers);
+            snprintf(assembly_instruction, 32, "ADC \t%s \t%s", alu_registers, parallel_move);
             break;
         case TST:
             if (instruction & 0x000008) {
