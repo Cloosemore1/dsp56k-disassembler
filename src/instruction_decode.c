@@ -295,7 +295,38 @@ void parallel_move_decode(unsigned short parallel_move_instruction, uint32_t ext
             snprintf(parallel_move, 32, "RY_2_MOVE");
             break;
         case XR_1_MOVE:
-            snprintf(parallel_move, 32, "XR_1_MOVE");
+            char s2_register = 'A';
+            char *d2_register = "Y0";
+            char register_1[3];
+            if (parallel_move_instruction & 0x0200) {
+                s2_register = 'B';
+            }
+            if (parallel_move_instruction & 0x0100) {
+                d2_register = "Y1";
+            }
+            effective_address_mode = parallel_move_instruction & 0x003F;
+            effective_address_decode(extension_word, program_counter, 'X', effective_address_mode, effective_address);
+            unsigned char reg_1_code = (parallel_move_instruction & 0x0C00) >> 10;
+            switch (reg_1_code) {
+                case 0x00:
+                    snprintf(register_1, 3, "X0");
+                    break;
+                case 0x01:
+                    snprintf(register_1, 3, "X1");
+                    break;
+                case 0x02:
+                    snprintf(register_1, 3, "A");
+                    break;
+                case 0x03:
+                    snprintf(register_1, 3, "B");
+                    break;
+            }
+            //Determine read or write
+            if (parallel_move_instruction & 0x0080) { //Write D2
+                snprintf(parallel_move, 32, "%s,%s \t%c,%s", effective_address, register_1, s2_register, d2_register);
+            } else { //Read S2
+                snprintf(parallel_move, 32, "%s,%s \t%c,%s", register_1, effective_address, s2_register, d2_register);
+            }
             break;
         case XR_2_MOVE:
             snprintf(parallel_move, 32, "XR_2_MOVE");
@@ -583,6 +614,10 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
 
     unsigned char absolute_short_address;
 
+    char logical_source_register[3];
+    char logical_destination_register;
+    unsigned char logical_source_register_code;
+
     if (mnemonic >= PARALLEL_MOVE_INSTRUCTION_START) { //If the opcode corresponds to a parallel move instruction, validate the move opcode
         parallel_move_code = (instruction & 0xFFFF00) >> 8;
         parallel_move_mnemonic = parallel_move_opcode_decode(parallel_move_code);
@@ -642,6 +677,20 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             effective_address_decode(extension_word, program_counter, memory_space, effective_address_mode, effective_address);
             snprintf(assembly_instruction, 32, "JMP \t%s", effective_address);
             break;
+        case JSET_PP:
+            //Get memory space
+            memory_space = 'X';
+            if (instruction & 0x000040) {
+                memory_space = 'Y';
+            }
+            //Get I/O short address and 1 extend
+            io_short_address = ((instruction & 0x003F00) >> 8) + 0xFFC0;
+            bit_number = instruction & 0x00001F;
+            //Get absolute address for jump
+            jmp_address = extension_word & 0x00FFFF;
+            (*program_counter)++;
+            snprintf(assembly_instruction, 32, "JSET \t#%d,%c:<<$%04X,$%04X", bit_number, memory_space, io_short_address, jmp_address);
+            break;
         case JCLR_PP:
             //Get memory space
             memory_space = 'X';
@@ -655,6 +704,19 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             jmp_address = extension_word & 0x00FFFF;
             (*program_counter)++;
             snprintf(assembly_instruction, 32, "JCLR \t#%d,%c:<<$%04X,$%04X", bit_number, memory_space, io_short_address, jmp_address);
+            break;
+        case JSET_EA:
+            bit_number = instruction & 0x00001F;
+            //Get memory space
+            memory_space = 'X';
+            if (instruction & 0x000040) {
+                memory_space = 'Y';
+            }
+            effective_address_mode = ((instruction & 0x003F00) >> 8);
+            effective_address_decode(extension_word, program_counter, memory_space, effective_address_mode, effective_address);
+            jmp_address = extension_word & 0x00FFFF;
+            (*program_counter)++;
+            snprintf(assembly_instruction, 32, "JSET \t#%d,%s,$%04X", bit_number, effective_address, jmp_address);
             break;
         case JSET_AA:
             bit_number = instruction & 0x00001F;
@@ -697,6 +759,17 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             jmp_address = extension_word & 0x00FFFF;
             (*program_counter)++;
             snprintf(assembly_instruction, 32, "JCLR \t#%d,%s,$%04X", bit_number, target_register, jmp_address);
+            break;
+        case BTST_PP:
+            //Get memory space
+            memory_space = 'X';
+            if (instruction & 0x000040) {
+                memory_space = 'Y';
+            }
+            //Get I/O short address and 1 extend
+            io_short_address = ((instruction & 0x003F00) >> 8) + 0xFFC0;
+            bit_number = instruction & 0x00001F;
+            snprintf(assembly_instruction, 32, "BTST \t#%d,%c:<<$%04X", bit_number, memory_space, io_short_address);
             break;
         case BCHG_PP:
             //Get memory space
@@ -883,10 +956,42 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             snprintf(assembly_instruction, 32, "DO \t%c:$%02X,$%04X", memory_space, absolute_short_address, extension_word);
             (*program_counter)++;
             break;
+        case MOVEC_EA:
+            register_code = instruction & 0x00003F;
+            register_decode(register_code, target_register);
+            //Get memory space
+            memory_space = 'X';
+            if (instruction & 0x000040) {
+                memory_space = 'Y';
+            }
+            //Get effective address
+            effective_address_mode = ((instruction & 0x003F00) >> 8);
+            effective_address_decode(extension_word, program_counter, memory_space, effective_address_mode, effective_address);
+            if (instruction & 0x008000) {
+                snprintf(assembly_instruction, 32, "MOVEC \t%s,%s", effective_address, target_register);
+            } else {
+                snprintf(assembly_instruction, 32, "MOVEC \t%s,%s", target_register, effective_address);
+            }
+            break;
+        case MOVEC_AA:
+            register_code = instruction & 0x00003F;
+            register_decode(register_code, target_register);
+            //Get memory space
+            memory_space = 'X';
+            if (instruction & 0x000040) {
+                memory_space = 'Y';
+            }
+            absolute_short_address = (instruction & 0x003F00) >> 8;
+            if (instruction & 0x008000) {
+                snprintf(assembly_instruction, 32, "MOVEC \t%c:$%02X,%s", memory_space, absolute_short_address, target_register);
+            } else {
+                snprintf(assembly_instruction, 32, "MOVEC \t%s,%c:$%02X", target_register, memory_space, absolute_short_address);
+            }
+            break;
         case MOVEC_S:
             source_register_code = instruction & 0x00003F;
             register_decode(source_register_code, source_register);
-            register_code = (instruction & 0x0033F00) >> 8;
+            register_code = (instruction & 0x003F00) >> 8;
             register_decode(register_code, target_register);
             if (instruction & 0x008000) {
                 snprintf(assembly_instruction, 32, "MOVEC \t%s,%s", target_register, source_register);
@@ -908,6 +1013,24 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             break;
         case RTS:
             snprintf(assembly_instruction, 32, "RTS");
+            break;
+        case RTI:
+            snprintf(assembly_instruction, 32, "RTI");
+            break;
+        case MACR_P:
+            //Determine sign
+            if (instruction & 0x000004) {
+                alu_sign = '-';
+            }
+            //Get product registers
+            alu_product_register_codes = (instruction & 0x000070) >> 4;
+            alu_product_register_decode(alu_product_register_codes, alu_product_registers);
+            //Get destination register
+            if (instruction & 0x000008) {
+                snprintf(assembly_instruction, 32, "MACR \t%c%s,B \t%s", alu_sign, alu_product_registers, parallel_move);
+            } else {
+                snprintf(assembly_instruction, 32, "MACR \t%c%s,A \t%s", alu_sign, alu_product_registers, parallel_move);
+            }
             break;
         case MAC_P:
             //Determine sign
@@ -954,16 +1077,20 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
                 snprintf(assembly_instruction, 32, "MPY \t%c%s,A \t%s", alu_sign, alu_product_registers, parallel_move);
             }
             break;
+        case CMPM:
+            alu_register_codes = (instruction & 0x000078) >> 3;
+            alu_register_decode(alu_register_codes, alu_registers);
+            snprintf(assembly_instruction, 32, "CMPM \t%s \t%s", alu_registers, parallel_move);
+            break;
         case AND:
-            char logical_source_register[3];
-            char logical_destination_register = 'A';
+            logical_destination_register = 'A';
             
             //Determine destination register
             if (instruction & 0x000008) {
                 logical_destination_register = 'B';
             }
             //Determine source register
-            unsigned char logical_source_register_code = (instruction & 0x000030) >> 4;
+            logical_source_register_code = (instruction & 0x000030) >> 4;
             switch (logical_source_register_code) {
                 case 0x00:
                     snprintf(logical_source_register, 3, "X0");
@@ -989,6 +1116,30 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             alu_register_codes = (instruction & 0x000078) >> 3;
             alu_register_decode(alu_register_codes, alu_registers);
             snprintf(assembly_instruction, 32, "SUB \t%s \t%s", alu_registers, parallel_move);
+            break;
+        case EOR:
+            logical_destination_register = 'A';
+            //Determine destination register
+            if (instruction & 0x000008) {
+                logical_destination_register = 'B';
+            }
+            //Determine source register
+            logical_source_register_code = (instruction & 0x000030) >> 4;
+            switch (logical_source_register_code) {
+                case 0x00:
+                    snprintf(logical_source_register, 3, "X0");
+                    break;
+                case 0x01:
+                    snprintf(logical_source_register, 3, "Y0");
+                    break;
+                case 0x02:
+                    snprintf(logical_source_register, 3, "X1");
+                    break;
+                case 0x03:
+                    snprintf(logical_source_register, 3, "Y1");
+                    break;
+            }
+            snprintf(assembly_instruction, 32, "EOR \t%s,%c \t%s", logical_source_register, logical_destination_register, parallel_move);
             break;
         case TFR:
             alu_register_codes = (instruction & 0x000078) >> 3;

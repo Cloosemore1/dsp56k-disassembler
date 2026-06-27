@@ -1,13 +1,13 @@
 #include "dsp56k.h"
 #include "instruction_decode.h"
 
-#define ENTRY_POINT 0xDA8D
+#define ENTRY_POINT 0xD10C
 
 //DSP has 512 word program ram which can be bootstrapped from external ROM on startup
 uint32_t program_ram[0xFFFF];
 
 //Program RAM address of next instruction to be executed, execution begins at address 0
-uint32_t program_counter = 0x04E6;
+uint32_t program_counter = 0x029C;
 
 uint32_t assemble_word_from_bytes(unsigned char *buffer) {
     //dsp uses 24-bit words, expanding to 32 bit here for simplicity, MSB will be 0x00
@@ -48,7 +48,7 @@ int main (int argc, char *argv[]) {
 
     char assembly_instruction[32];
     //print first 32 words of program RAM
-    while (program_counter >= 0x0000 && program_counter < 0x05D4) {
+    while (program_counter >= 0x0000 && program_counter < 0x048C) {
         printf("$%04X: ", program_counter);
         instruction_decode(
             program_ram[program_counter], 
