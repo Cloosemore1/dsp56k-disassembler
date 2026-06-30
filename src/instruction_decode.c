@@ -1103,6 +1103,23 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             register_decode(register_code, target_register);
             snprintf(assembly_instruction, 32, "LUA \t%s,%s", effective_address + 2, target_register);
             break;
+        case OR_XX:
+            char control_register[4];
+            unsigned char control_register_code = instruction & 0x000003;
+            switch (control_register_code) {
+                case 0x00:
+                    snprintf(control_register, 4, "MR");
+                    break;
+                case 0x01:
+                    snprintf(control_register, 4, "CCR");
+                    break;
+                case 0x02:
+                    snprintf(control_register, 4, "OMR");
+                    break;
+            }
+            imm_short_data = (instruction & 0x00FF00) >> 8;
+            snprintf(assembly_instruction, 32, "OR(I) \t%02X,%s", imm_short_data, control_register);
+            break;
         case ENDDO:
             snprintf(assembly_instruction, 32, "ENDDO");
             break;
@@ -1236,6 +1253,30 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             }
             snprintf(assembly_instruction, 32, "EOR \t%s,%c \t%s", logical_source_register, logical_destination_register, parallel_move);
             break;
+        case OR:
+            logical_destination_register = 'A';
+            //Determine destination register
+            if (instruction & 0x000008) {
+                logical_destination_register = 'B';
+            }
+            //Determine source register
+            logical_source_register_code = (instruction & 0x000030) >> 4;
+            switch (logical_source_register_code) {
+                case 0x00:
+                    snprintf(logical_source_register, 3, "X0");
+                    break;
+                case 0x01:
+                    snprintf(logical_source_register, 3, "Y0");
+                    break;
+                case 0x02:
+                    snprintf(logical_source_register, 3, "X1");
+                    break;
+                case 0x03:
+                    snprintf(logical_source_register, 3, "Y1");
+                    break;
+            }
+            snprintf(assembly_instruction, 32, "OR \t%s,%c \t%s", logical_source_register, logical_destination_register, parallel_move);
+            break;
         case TFR:
             alu_register_codes = (instruction & 0x000078) >> 3;
             alu_register_decode(alu_register_codes, alu_registers);
@@ -1264,6 +1305,13 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             alu_register_codes = (instruction & 0x000038) >> 3;
             alu_register_decode(alu_register_codes, alu_registers);
             snprintf(assembly_instruction, 32, "ADC \t%s \t%s", alu_registers, parallel_move);
+            break;
+        case ASR:
+            if (instruction & 0x000008) {
+                snprintf(assembly_instruction, 32, "ASR \tB \t%s", parallel_move);
+            } else {
+                snprintf(assembly_instruction, 32, "ASR \tA \t%s", parallel_move);
+            }
             break;
         case TST:
             if (instruction & 0x000008) {
