@@ -313,7 +313,43 @@ void parallel_move_decode(unsigned short parallel_move_instruction, uint32_t ext
             }
             break;
         case L_EA_MOVE:
-            snprintf(parallel_move, 32, "L_EA_MOVE");
+            effective_address_mode = parallel_move_instruction & 0x003F;
+            effective_address_decode(extension_word, program_counter, 'L', effective_address_mode, effective_address);
+            unsigned char long_register_code = (parallel_move_instruction & 0x0300) >> 8;
+            long_register_code += (parallel_move_instruction & 0x0800) >> 9;
+            char long_register[4];
+            switch (long_register_code) {
+                case 0:
+                    snprintf(long_register, 4, "A10");
+                    break;
+                case 1:
+                    snprintf(long_register, 4, "B10");
+                    break;
+                case 2:
+                    snprintf(long_register, 4, "X");
+                    break;
+                case 3:
+                    snprintf(long_register, 4, "Y");
+                    break;
+                case 4:
+                    snprintf(long_register, 4, "A");
+                    break;
+                case 5:
+                    snprintf(long_register, 4, "B");
+                    break;
+                case 6:
+                    snprintf(long_register, 4, "AB");
+                    break;
+                case 7:
+                    snprintf(long_register, 4, "BA");
+                    break;
+            }
+            //Determine read/write
+            if (parallel_move_instruction & 0x0080) {
+                snprintf(parallel_move, 32, "%s,%s", effective_address, long_register);
+            } else {
+                snprintf(parallel_move, 32, "%s,%s", long_register, effective_address);
+            }
             break;
         case L_AA_MOVE:
             snprintf(parallel_move, 32, "L_AA_MOVE");
@@ -699,6 +735,9 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
     char logical_source_register[3];
     char logical_destination_register;
     unsigned char logical_source_register_code;
+
+    char control_register[4];
+    unsigned char control_register_code;
 
     if (mnemonic >= PARALLEL_MOVE_INSTRUCTION_START) { //If the opcode corresponds to a parallel move instruction, validate the move opcode
         parallel_move_code = (instruction & 0xFFFF00) >> 8;
@@ -1104,8 +1143,7 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             snprintf(assembly_instruction, 32, "LUA \t%s,%s", effective_address + 2, target_register);
             break;
         case OR_XX:
-            char control_register[4];
-            unsigned char control_register_code = instruction & 0x000003;
+            control_register_code = instruction & 0x000003;
             switch (control_register_code) {
                 case 0x00:
                     snprintf(control_register, 4, "MR");
@@ -1118,7 +1156,23 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
                     break;
             }
             imm_short_data = (instruction & 0x00FF00) >> 8;
-            snprintf(assembly_instruction, 32, "OR(I) \t%02X,%s", imm_short_data, control_register);
+            snprintf(assembly_instruction, 32, "OR(I) \t#%02X,%s", imm_short_data, control_register);
+            break;
+        case AND_XX:
+            control_register_code = instruction & 0x000003;
+            switch (control_register_code) {
+                case 0x00:
+                    snprintf(control_register, 4, "MR");
+                    break;
+                case 0x01:
+                    snprintf(control_register, 4, "CCR");
+                    break;
+                case 0x02:
+                    snprintf(control_register, 4, "OMR");
+                    break;
+            }
+            imm_short_data = (instruction & 0x00FF00) >> 8;
+            snprintf(assembly_instruction, 32, "AND(I) \t#%02X,%s", imm_short_data, control_register);
             break;
         case ENDDO:
             snprintf(assembly_instruction, 32, "ENDDO");
@@ -1139,9 +1193,9 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             alu_product_register_decode(alu_product_register_codes, alu_product_registers);
             //Get destination register
             if (instruction & 0x000008) {
-                snprintf(assembly_instruction, 32, "MACR \t%c%s,B \t%s", alu_sign, alu_product_registers, parallel_move);
+                snprintf(assembly_instruction, 64, "MACR \t%c%s,B \t%s", alu_sign, alu_product_registers, parallel_move);
             } else {
-                snprintf(assembly_instruction, 32, "MACR \t%c%s,A \t%s", alu_sign, alu_product_registers, parallel_move);
+                snprintf(assembly_instruction, 64, "MACR \t%c%s,A \t%s", alu_sign, alu_product_registers, parallel_move);
             }
             break;
         case MAC_P:
@@ -1154,9 +1208,9 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             alu_product_register_decode(alu_product_register_codes, alu_product_registers);
             //Get destination register
             if (instruction & 0x000008) {
-                snprintf(assembly_instruction, 32, "MAC \t%c%s,B \t%s", alu_sign, alu_product_registers, parallel_move);
+                snprintf(assembly_instruction, 64, "MAC \t%c%s,B \t%s", alu_sign, alu_product_registers, parallel_move);
             } else {
-                snprintf(assembly_instruction, 32, "MAC \t%c%s,A \t%s", alu_sign, alu_product_registers, parallel_move);
+                snprintf(assembly_instruction, 64, "MAC \t%c%s,A \t%s", alu_sign, alu_product_registers, parallel_move);
             }
             break;
         case MPYR_P:
@@ -1169,9 +1223,9 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             alu_product_register_decode(alu_product_register_codes, alu_product_registers);
             //Get destination register
             if (instruction & 0x000008) {
-                snprintf(assembly_instruction, 32, "MPYR \t%c%s,B \t%s", alu_sign, alu_product_registers, parallel_move);
+                snprintf(assembly_instruction, 64, "MPYR \t%c%s,B \t%s", alu_sign, alu_product_registers, parallel_move);
             } else {
-                snprintf(assembly_instruction, 32, "MPYR \t%c%s,A \t%s", alu_sign, alu_product_registers, parallel_move);
+                snprintf(assembly_instruction, 64, "MPYR \t%c%s,A \t%s", alu_sign, alu_product_registers, parallel_move);
             }
             break;
         case MPY_P:
@@ -1184,15 +1238,15 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
             alu_product_register_decode(alu_product_register_codes, alu_product_registers);
             //Get destination register
             if (instruction & 0x000008) {
-                snprintf(assembly_instruction, 32, "MPY \t%c%s,B \t%s", alu_sign, alu_product_registers, parallel_move);
+                snprintf(assembly_instruction, 64, "MPY \t%c%s,B \t%s", alu_sign, alu_product_registers, parallel_move);
             } else {
-                snprintf(assembly_instruction, 32, "MPY \t%c%s,A \t%s", alu_sign, alu_product_registers, parallel_move);
+                snprintf(assembly_instruction, 64, "MPY \t%c%s,A \t%s", alu_sign, alu_product_registers, parallel_move);
             }
             break;
         case CMPM:
             alu_register_codes = (instruction & 0x000078) >> 3;
             alu_register_decode(alu_register_codes, alu_registers);
-            snprintf(assembly_instruction, 32, "CMPM \t%s \t%s", alu_registers, parallel_move);
+            snprintf(assembly_instruction, 64, "CMPM \t%s \t%s", alu_registers, parallel_move);
             break;
         case AND:
             logical_destination_register = 'A';
@@ -1217,17 +1271,17 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
                     snprintf(logical_source_register, 3, "Y1");
                     break;
             }
-            snprintf(assembly_instruction, 32, "AND \t%s,%c \t%s", logical_source_register, logical_destination_register, parallel_move);
+            snprintf(assembly_instruction, 64, "AND \t%s,%c \t%s", logical_source_register, logical_destination_register, parallel_move);
             break;
         case CMP:
             alu_register_codes = (instruction & 0x000078) >> 3;
             alu_register_decode(alu_register_codes, alu_registers);
-            snprintf(assembly_instruction, 32, "CMP \t%s \t%s", alu_registers, parallel_move);
+            snprintf(assembly_instruction, 64, "CMP \t%s \t%s", alu_registers, parallel_move);
             break;
         case SUB:
             alu_register_codes = (instruction & 0x000078) >> 3;
             alu_register_decode(alu_register_codes, alu_registers);
-            snprintf(assembly_instruction, 32, "SUB \t%s \t%s", alu_registers, parallel_move);
+            snprintf(assembly_instruction, 64, "SUB \t%s \t%s", alu_registers, parallel_move);
             break;
         case EOR:
             logical_destination_register = 'A';
@@ -1251,7 +1305,7 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
                     snprintf(logical_source_register, 3, "Y1");
                     break;
             }
-            snprintf(assembly_instruction, 32, "EOR \t%s,%c \t%s", logical_source_register, logical_destination_register, parallel_move);
+            snprintf(assembly_instruction, 64, "EOR \t%s,%c \t%s", logical_source_register, logical_destination_register, parallel_move);
             break;
         case OR:
             logical_destination_register = 'A';
@@ -1275,56 +1329,56 @@ void instruction_decode(uint32_t instruction, uint32_t extension_word, uint32_t 
                     snprintf(logical_source_register, 3, "Y1");
                     break;
             }
-            snprintf(assembly_instruction, 32, "OR \t%s,%c \t%s", logical_source_register, logical_destination_register, parallel_move);
+            snprintf(assembly_instruction, 64, "OR \t%s,%c \t%s", logical_source_register, logical_destination_register, parallel_move);
             break;
         case TFR:
             alu_register_codes = (instruction & 0x000078) >> 3;
             alu_register_decode(alu_register_codes, alu_registers);
-            snprintf(assembly_instruction, 32, "TFR \t%s \t%s", alu_registers, parallel_move);
+            snprintf(assembly_instruction, 64, "TFR \t%s \t%s", alu_registers, parallel_move);
             break;
         case ASL:
             if (instruction & 0x000008) {
-                snprintf(assembly_instruction, 32, "ASL \tB");
+                snprintf(assembly_instruction, 64, "ASL \tB");
             } else {
-                snprintf(assembly_instruction, 32, "ASL \tA");
+                snprintf(assembly_instruction, 64, "ASL \tA");
             }
             break;
         case CLR:
             if (instruction & 0x000008) {
-                snprintf(assembly_instruction, 32, "CLR \tB \t%s", parallel_move);
+                snprintf(assembly_instruction, 64, "CLR \tB \t%s", parallel_move);
             } else {
-                snprintf(assembly_instruction, 32, "CLR \tA \t%s", parallel_move);
+                snprintf(assembly_instruction, 64, "CLR \tA \t%s", parallel_move);
             }
             break;
         case ADD:
             alu_register_codes = (instruction & 0x000078) >> 3;
             alu_register_decode(alu_register_codes, alu_registers);
-            snprintf(assembly_instruction, 32, "ADD \t%s \t%s", alu_registers, parallel_move);
+            snprintf(assembly_instruction, 64, "ADD \t%s \t%s", alu_registers, parallel_move);
             break;
         case ADC:
             alu_register_codes = (instruction & 0x000038) >> 3;
             alu_register_decode(alu_register_codes, alu_registers);
-            snprintf(assembly_instruction, 32, "ADC \t%s \t%s", alu_registers, parallel_move);
+            snprintf(assembly_instruction, 64, "ADC \t%s \t%s", alu_registers, parallel_move);
             break;
         case ASR:
             if (instruction & 0x000008) {
-                snprintf(assembly_instruction, 32, "ASR \tB \t%s", parallel_move);
+                snprintf(assembly_instruction, 64, "ASR \tB \t%s", parallel_move);
             } else {
-                snprintf(assembly_instruction, 32, "ASR \tA \t%s", parallel_move);
+                snprintf(assembly_instruction, 64, "ASR \tA \t%s", parallel_move);
             }
             break;
         case TST:
             if (instruction & 0x000008) {
-                snprintf(assembly_instruction, 32, "TST \tB \t%s", parallel_move);
+                snprintf(assembly_instruction, 64, "TST \tB \t%s", parallel_move);
             } else {
-                snprintf(assembly_instruction, 32, "TST \tA \t%s", parallel_move);
+                snprintf(assembly_instruction, 64, "TST \tA \t%s", parallel_move);
             }
             break;
         case MOVE:
-            snprintf(assembly_instruction, 32, "MOVE \t%s", parallel_move);
+            snprintf(assembly_instruction, 64, "MOVE \t%s", parallel_move);
             break;
         default:
-            snprintf(assembly_instruction, 32, "%d \t%s", mnemonic, parallel_move);
+            snprintf(assembly_instruction, 64, "%d \t%s", mnemonic, parallel_move);
             break;
     }
 
