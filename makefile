@@ -1,18 +1,21 @@
-IDIR = ./include
-_DEPS = dsp56k.h instruction_decode.h
-DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))
-CFLAGS = -I$(IDIR)
+CC		= gcc
+CFLAGS 	= -Wall -Wextra -Wpedantic -I$(IDIR)
+TARGET	= dsp56k
 
-ODIR = obj
+IDIR 	= ./include
+ODIR 	= ./obj
+
+_DEPS 	= dsp56k.h instruction_decode.h
+DEPS 	= $(patsubst %,$(IDIR)/%,$(_DEPS))
 
 _OBJ = instruction_decode.o dsp56k.o
 OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
 
 $(ODIR)/%.o: src/%.c $(DEPS)
-	gcc -c -o $@ $< $(CFLAGS)
+	$(CC) -c -o $@ $< $(CFLAGS)
 
-dsp56k: $(OBJ)
-	gcc -o $@ $^ $(CFLAGS)
+$(TARGET): $(OBJ)
+	$(CC) -o $@ $^ $(CFLAGS)
 
 clean:
 	rm -f $(ODIR)/*.o
