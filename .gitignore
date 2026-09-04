@@ -3,6 +3,7 @@
 
 #Program executable/object files
 dsp56k
+test_dsp56k
 obj/
 
 # Output files
