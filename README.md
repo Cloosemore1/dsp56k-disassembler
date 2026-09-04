@@ -34,6 +34,9 @@ dsp56k-disassembler/
 ├── src/
 │   ├── dsp56k.c
 │   └── instruction_decode.c
+├── test/
+│   ├── unity/
+│   └── test_instruction_decode.c
 ├── Makefile
 └── README.md
 ```
@@ -41,6 +44,9 @@ dsp56k-disassembler/
 `dsp56k.c` contains the command-line entry point and binary program loading logic.
 
 `instruction_decode.c` contains the DSP56k instruction, operand, addressing-mode, and parallel-move decoding logic.
+
+`test_instruction_decode.c` contains Unity test coverage of the decoding functionality.
+
 
 ## Building
 
@@ -56,6 +62,12 @@ To remove generated build files:
 
 ```bash
 make clean
+```
+
+To run tests:
+
+```bash
+make test
 ```
 
 ## Usage
@@ -96,7 +108,7 @@ A substantial portion of the instruction set and parallel-move encodings is impl
 Future work includes:
 
 * Expanding instruction and parallel-move coverage
-* Adding automated instruction-decoding tests
+* Add additional test coverage
 * Supporting arbitrary program-image sizes and load addresses
 * Improving command-line options and error reporting
 
