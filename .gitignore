@@ -4,3 +4,7 @@
 #Program executable/object files
 dsp56k
 obj/
+
+# Output files
+*.asm
+*.dis
