@@ -69,9 +69,12 @@ The input file is interpreted as packed 24-bit DSP program words.
 Example output:
 
 ```text
-$0000: ...
-$0001: ...
-$0002: ...
+$009E: MOVEP 	A,Y:<<$FFF0
+$009F: MOVEP 	Y:<<$FFF0,X0
+$00A0: CLR 	    A 	#000040,R0
+$00A2: DO 	    #516,$00A4
+$00A4: MOVE 	A,L:(R0)+
+$00A5: MOVEP 	#000000,X:<<$FFE1
 ```
 
 Each output line contains the DSP program-memory address followed by the decoded instruction.
